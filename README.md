@@ -46,7 +46,7 @@ Agents run in the background after the click (`lib/actions.ts`, via Next.js `aft
 
 | Variable | Needed for |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | The scout and research agents (Claude API). |
+| `ANTHROPIC_API_KEY` | The scout and research agents (Claude API). Without it the app runs in **demo mode**: both agents return made-up results (names start with "Demo:") after a few seconds, so the flow can be tried end to end. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Saving catalogue and shortlist data. Create the tables with `supabase/schema.sql`. Without these the app keeps data in memory, which resets on every deploy or cold start. |
 
 Agents run inside the server function, so they are capped by its time limit (`maxDuration = 300` seconds in `app/layout.tsx`).

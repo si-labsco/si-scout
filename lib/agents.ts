@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { City, Venture } from '@/data/ventures'
+import { demoMode, demoResearch, demoScout } from '@/lib/demo'
 
 // The two AI agents behind the pipeline:
 //  - runScout: searches the web for proven ventures that could be brought to a city (fills the catalogue).
@@ -157,6 +158,7 @@ const scoutTool: SubmitTool<ScoutResult> = {
 }
 
 export function runScout(cityName: string, knownVentures: string[]) {
+  if (demoMode) return demoScout(cityName, knownVentures)
   return runAgent({
     system: `You are the scouting agent for Si-Labs.\n\n${LAB_CONTEXT}\n\nYour job: given a target city, research what the city needs and find proven ventures from other places that could be brought there. Use web search to check that each venture is real and operating. Be honest in the fit scores; a human will decide which candidates to shortlist.`,
     prompt: `Target city: ${cityName}\n\nFind 8 to 12 venture candidates that could be replicated in this city.${knownVentures.length ? `\n\nAlready in the catalogue, do not repeat: ${knownVentures.join(', ')}.` : ''}\n\nWhen you are done, call submit_candidates.`,
@@ -241,6 +243,7 @@ const researchTool: SubmitTool<ResearchResult> = {
 }
 
 export function runResearch(venture: Venture, city: City | undefined) {
+  if (demoMode) return demoResearch(venture, city)
   const known = { name: venture.name, sector: venture.sector, hq: `${venture.hqCity}, ${venture.hqCountry}`, oneLiner: venture.oneLiner, links: venture.sources.map((s) => s.url) }
   return runAgent({
     system: `You are the research agent for Si-Labs.\n\n${LAB_CONTEXT}\n\nYour job: a human has shortlisted a venture. Do the background research the lab needs to decide whether to pitch it: business model, scale, jobs and who they go to, expansion history, and the four scores. Use web search and web fetch, prefer primary sources (the venture's own site, annual reports, reputable press), and cite every claim. If something cannot be found, say so plainly instead of guessing.`,

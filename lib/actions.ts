@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import type { Venture } from '@/data/ventures'
 import { runResearch, runScout } from '@/lib/agents'
+import { demoMode } from '@/lib/demo'
 import { getCity, getVenture, store, updateVenture } from '@/lib/store'
 import { blankCity, isRunning, slugify } from '@/lib/ventures'
 
@@ -45,7 +46,7 @@ async function scoutCity(cityId: string, name: string) {
         expansionModel: c.expansionModel, expansionHistory: 'To be researched.', status: 'new', cityFit: c.cityFit, cityFitReason: c.cityFitReason,
         scores: { lroi: { value: 0, reason: 'Not researched yet.' }, replicability: { value: 0, reason: 'Not researched yet.' }, franchiseReadiness: { value: 0, reason: 'Not researched yet.' }, willingnessToExpand: { value: 0, reason: 'Not researched yet.' } },
         sources: c.website ? [{ title: `${c.name} website`, url: c.website }] : [],
-        lastUpdated: now().slice(0, 10), isSample: false,
+        lastUpdated: now().slice(0, 10), isSample: demoMode,
       })
     }
     await store.saveVentures(candidates)
@@ -76,7 +77,7 @@ async function researchVenture(id: string) {
     const venture = await getVenture(id)
     if (!venture) return
     const result = await runResearch(venture, await getCity(venture.cityId))
-    await updateVenture(id, { ...result, status: 'needs_review', isSample: false, lastUpdated: now().slice(0, 10), research: { status: 'done', startedAt: venture.research.startedAt, finishedAt: now() } })
+    await updateVenture(id, { ...result, status: 'needs_review', isSample: venture.isSample || demoMode, lastUpdated: now().slice(0, 10), research: { status: 'done', startedAt: venture.research.startedAt, finishedAt: now() } })
   } catch (error) {
     const venture = await getVenture(id)
     await updateVenture(id, { research: { status: 'failed', startedAt: venture?.research.startedAt, finishedAt: now(), error: message(error) } })

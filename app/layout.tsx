@@ -2,6 +2,10 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+// Pages read live data, and the scout/research agents run in the background after a server action responds.
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
 export const metadata: Metadata = {
   title: 'Si-Labs · Venture sourcing',
   description: 'Internal venture sourcing and benchmarking workspace for Si-Labs.',

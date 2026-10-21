@@ -7,15 +7,27 @@ export type City = {
   costFit: number
   talentFit: number
   blockers: string[]
+  scout?: AgentRun
+}
+
+export type AgentRun = {
+  status: 'not_started' | 'running' | 'done' | 'failed'
+  startedAt?: string
+  finishedAt?: string
+  error?: string
 }
 
 export type Score = {
   value: number
   reason: string
+  sourceRefs?: number[]
 }
 
 export type Venture = {
   id: string
+  cityId: string
+  stage: 'catalogue' | 'shortlisted'
+  research: AgentRun
   name: string
   sector: string
   hqCity: string
@@ -30,6 +42,7 @@ export type Venture = {
   expansionHistory: string
   status: 'new' | 'needs_review' | 'ready_to_pitch'
   cityFit: number
+  cityFitReason: string
   scores: {
     lroi: Score
     replicability: Score
@@ -56,8 +69,10 @@ export const cities: City[] = [
   },
 ]
 
+type SeedVenture = Omit<Venture, 'cityId' | 'stage' | 'research' | 'cityFitReason'>
+
 // Ventures shared in #ventures-for-si-labs. Numbers and scores are random placeholders until researched.
-export const ventures: Venture[] = [
+const seed: SeedVenture[] = [
   {
     id: 'jo-academy', name: "Jo Academy", sector: "Education", hqCity: "Amman", hqCountry: "Jordan",
     oneLiner: "Digital learning for 2.5M+ students in Jordan, KSA and Iraq.", businessModel: 'To be researched', yearsRunning: 10, scale: 'To be researched', jobsCreated: 3300, whoTheyEmploy: 'To be researched', expansionModel: 'franchise', expansionHistory: 'To be researched.', status: 'needs_review', cityFit: 95,
@@ -155,3 +170,12 @@ export const ventures: Venture[] = [
     sources: [{ title: "ANA website", url: 'https://ana.care/' }], lastUpdated: '2026-10-20', isSample: true,
   },
 ]
+
+// Seed data for the first run. Ventures already under review start on the shortlist; the rest sit in the catalogue.
+export const ventures: Venture[] = seed.map((venture) => ({
+  ...venture,
+  cityId: selectedCityId,
+  stage: venture.status === 'new' ? 'catalogue' : 'shortlisted',
+  research: { status: 'not_started' },
+  cityFitReason: '',
+}))

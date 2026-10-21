@@ -1,3 +1,0 @@
-import { Shell } from '@/components/venture-shell'
-import { ventures } from '@/data/ventures'
-export default function Sources(){return <Shell active="Sources"><h1 className="text-3xl font-semibold">Sources</h1><p className="mt-2 text-sm text-muted-foreground">Research links across the venture pipeline.</p><div className="mt-8 flex flex-col gap-4">{ventures.flatMap(v=>v.sources.map(s=><a className="rounded-xl border border-glass-border glass p-5 text-sm hover:bg-white" key={s.url} href={s.url} target="_blank" rel="noreferrer"><div className="font-medium">{s.title}</div><div className="mt-1 text-xs text-subtle">{v.name}</div></a>))}</div></Shell>}

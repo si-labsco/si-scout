@@ -6,6 +6,10 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-space-grotesk' })
 
+// Pages read live data, and the scout/research agents run in the background after a server action responds.
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
 export const metadata: Metadata = {
   title: 'Si-Labs · Venture sourcing',
   description: 'Internal venture sourcing and benchmarking workspace for Si-Labs.',

@@ -1,4 +1,4 @@
 import { Shell } from '@/components/venture-shell'
 import { VentureRow } from '@/components/venture-row'
 import { store } from '@/lib/store'
-export default async function Approvals(){const rows=(await store.listVentures()).filter(v=>v.stage==='shortlisted'&&v.status==='needs_review');return <Shell active="Approvals"><h1 className="text-3xl font-semibold">Approvals</h1><p className="mt-2 text-sm text-[#788078]">{rows.length} ventures need your review.</p><div className="mt-8 divide-y divide-[#e6e9e2] overflow-hidden rounded-xl border border-[#dde1d8] bg-[#fbfcf8]">{rows.map((v,i)=><VentureRow key={v.id} venture={v} index={i}/>)}</div></Shell>}
+export default async function Approvals(){const rows=(await store.listVentures()).filter(v=>v.stage==='shortlisted'&&v.status==='needs_review');return <Shell active="Approvals"><h1 className="text-3xl font-semibold">Approvals</h1><p className="mt-2 text-sm text-muted-foreground">{rows.length} ventures need your review.</p><div className="mt-8 divide-y divide-foreground/10 overflow-hidden rounded-xl border border-glass-border glass">{rows.map((v,i)=><VentureRow key={v.id} venture={v} index={i}/>)}</div></Shell>}

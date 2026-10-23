@@ -6,6 +6,7 @@ import { discoveryQuestions, screeningTests, type Decision, type Venture } from 
 import { runResearch, runScout } from '@/lib/agents'
 import { demoMode } from '@/lib/demo'
 import { getCity, getVenture, store, updateVenture } from '@/lib/store'
+import { requireSession } from '@/lib/auth'
 import { blankCity, decisionStatus, isRunning, slugify } from '@/lib/ventures'
 
 const now = () => new Date().toISOString()
@@ -13,6 +14,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 
 // Starts the scout agent for a city in the background and sends the user to that city's catalogue.
 export async function startScout(formData: FormData) {
+  await requireSession()
   const name = String(formData.get('city') ?? '').trim()
   if (!name) return
   const id = slugify(name)
@@ -61,12 +63,14 @@ async function scoutCity(cityId: string, name: string) {
 
 // Moves a catalogue candidate onto the shortlist and kicks off the research agent.
 export async function shortlistVenture(id: string) {
+  await requireSession()
   await updateVenture(id, { stage: 'shortlisted' })
   await startResearch(id)
   revalidatePath('/', 'layout')
 }
 
 export async function startResearch(id: string) {
+  await requireSession()
   const venture = await getVenture(id)
   if (!venture || isRunning(venture.research)) return
   await updateVenture(id, { research: { status: 'running', startedAt: now() } })
@@ -88,6 +92,62 @@ async function researchVenture(id: string) {
 
 // The human screening decision (stage 1 of the Distribution Partnership framework).
 export async function decideVenture(id: string, decision: Decision) {
+  await requireSession()
   await updateVenture(id, { status: decisionStatus(decision) })
   revalidatePath('/', 'layout')
+}
+
+// Saves the edit form on /ventures/[id]/edit. Every field on the venture page can be changed by hand.
+export async function saveVentureEdits(id: string, formData: FormData) {
+  await requireSession()
+  const venture = await getVenture(id)
+  if (!venture) return
+  const str = (key: string, fallback = '') => String(formData.get(key) ?? fallback).trim()
+  const num = (key: string, min: number, max: number, fallback: number) => {
+    const value = Number(formData.get(key))
+    return Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback
+  }
+  const pick = <T extends string>(key: string, options: readonly T[], fallback: T) => {
+    const value = str(key) as T
+    return options.includes(value) ? value : fallback
+  }
+  const scores = Object.fromEntries(screeningTests.map(({ key }) => [key, {
+    ...venture.scores[key],
+    value: num(`score.${key}.value`, 0, 10, venture.scores[key].value),
+    reason: str(`score.${key}.reason`, venture.scores[key].reason),
+  }])) as Venture['scores']
+  const discovery = discoveryQuestions.map(({ key }) => ({
+    key,
+    answer: str(`discovery.${key}.answer`) || 'Ask in the partner meeting.',
+    source: formData.get(`discovery.${key}.answered`) ? 'public' as const : 'ask' as const,
+  }))
+  // One source per line: "Title | https://url" (a bare URL also works).
+  const sources = str('sources').split('\n').map((line) => line.trim()).filter(Boolean).flatMap((line) => {
+    const [title, link] = line.includes('|') ? line.split('|').map((part) => part.trim()) : [line, line]
+    return /^https?:\/\//.test(link) ? [{ title: title || link, url: link }] : []
+  })
+  await updateVenture(id, {
+    name: str('name', venture.name) || venture.name,
+    sector: str('sector', venture.sector),
+    hqCity: str('hqCity', venture.hqCity),
+    hqCountry: str('hqCountry', venture.hqCountry),
+    oneLiner: str('oneLiner', venture.oneLiner),
+    businessModel: str('businessModel', venture.businessModel),
+    yearsRunning: num('yearsRunning', 0, 500, venture.yearsRunning),
+    scale: str('scale', venture.scale),
+    jobsCreated: num('jobsCreated', 0, 10_000_000, venture.jobsCreated),
+    whoTheyEmploy: str('whoTheyEmploy', venture.whoTheyEmploy),
+    expansionModel: pick('expansionModel', ['franchise', 'partner', 'cooperative', 'owned'] as const, venture.expansionModel),
+    expansionHistory: str('expansionHistory', venture.expansionHistory),
+    cityFit: num('cityFit', 0, 100, venture.cityFit),
+    cityFitReason: str('cityFitReason', venture.cityFitReason),
+    scores,
+    screening: { recommendation: pick('recommendation', ['proceed', 'hold', 'decline'] as const, venture.screening.recommendation), rationale: str('rationale', venture.screening.rationale) },
+    discovery,
+    sources,
+    notes: str('notes'),
+    lastUpdated: now().slice(0, 10),
+  })
+  revalidatePath('/', 'layout')
+  redirect(`/ventures/${id}`)
 }

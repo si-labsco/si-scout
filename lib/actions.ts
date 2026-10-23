@@ -2,11 +2,11 @@
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import type { Venture } from '@/data/ventures'
+import { discoveryQuestions, screeningTests, type Decision, type Venture } from '@/data/ventures'
 import { runResearch, runScout } from '@/lib/agents'
 import { demoMode } from '@/lib/demo'
 import { getCity, getVenture, store, updateVenture } from '@/lib/store'
-import { blankCity, isRunning, slugify } from '@/lib/ventures'
+import { blankCity, decisionStatus, isRunning, slugify } from '@/lib/ventures'
 
 const now = () => new Date().toISOString()
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -44,7 +44,9 @@ async function scoutCity(cityId: string, name: string) {
         name: c.name, sector: c.sector, hqCity: c.hqCity, hqCountry: c.hqCountry, oneLiner: c.oneLiner,
         businessModel: 'To be researched', yearsRunning: 0, scale: 'To be researched', jobsCreated: 0, whoTheyEmploy: 'To be researched',
         expansionModel: c.expansionModel, expansionHistory: 'To be researched.', status: 'new', cityFit: c.cityFit, cityFitReason: c.cityFitReason,
-        scores: { lroi: { value: 0, reason: 'Not researched yet.' }, replicability: { value: 0, reason: 'Not researched yet.' }, franchiseReadiness: { value: 0, reason: 'Not researched yet.' }, willingnessToExpand: { value: 0, reason: 'Not researched yet.' } },
+        scores: Object.fromEntries(screeningTests.map(({ key }) => [key, { value: 0, reason: 'Not screened yet.' }])) as Venture['scores'],
+        screening: { recommendation: 'hold', rationale: 'Not screened yet. Shortlist it to run research.' },
+        discovery: discoveryQuestions.map(({ key }) => ({ key, answer: 'Ask in the partner meeting.', source: 'ask' as const })),
         sources: c.website ? [{ title: `${c.name} website`, url: c.website }] : [],
         lastUpdated: now().slice(0, 10), isSample: demoMode,
       })
@@ -84,7 +86,8 @@ async function researchVenture(id: string) {
   }
 }
 
-export async function approveVenture(id: string) {
-  await updateVenture(id, { status: 'ready_to_pitch' })
+// The human screening decision (stage 1 of the Distribution Partnership framework).
+export async function decideVenture(id: string, decision: Decision) {
+  await updateVenture(id, { status: decisionStatus(decision) })
   revalidatePath('/', 'layout')
 }

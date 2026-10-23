@@ -1,4 +1,4 @@
-import type { City, Venture } from '@/data/ventures'
+import { discoveryQuestions, screeningTests, type City, type Venture } from '@/data/ventures'
 import type { ResearchResult, ScoutResult } from '@/lib/agents'
 
 // Demo mode: with no Anthropic credentials set, the scout and research agents return made-up results
@@ -46,7 +46,9 @@ export async function demoResearch(venture: Venture, city: City | undefined): Pr
     expansionHistory: 'Demo text: the agent would summarise how and where the venture has expanded so far, with citations.',
     cityFit: venture.cityFit,
     cityFitReason: `Demo reasoning: the agent would explain why this venture fits ${city?.name ?? 'the target city'}.`,
-    scores: { lroi: score('jobs created per dollar'), replicability: score('how easily the model copies'), franchiseReadiness: score('playbooks and unit economics'), willingnessToExpand: score('the founders’ appetite to expand') },
+    scores: Object.fromEntries(screeningTests.map((t) => [t.key, score(t.label.toLowerCase())])) as Venture['scores'],
+    screening: { recommendation: (['proceed', 'hold', 'decline'] as const)[rand(0, 2)], rationale: 'Demo recommendation: the agent would explain its Proceed / Hold / Decline call here.' },
+    discovery: discoveryQuestions.map(({ key, area }, i) => i < 3 || key === 'jobs' ? { key, answer: `Demo answer: what public sources say about ${area.toLowerCase()}.`, source: 'public' as const } : { key, answer: 'Demo: ask in the partner meeting.', source: 'ask' as const }),
     sources: venture.sources,
   }
 }

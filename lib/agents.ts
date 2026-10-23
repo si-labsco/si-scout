@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { City, Venture } from '@/data/ventures'
+import { discoveryQuestions, screeningTests, type City, type Decision, type Venture } from '@/data/ventures'
 import { demoMode, demoResearch, demoScout } from '@/lib/demo'
 
 // The two AI agents behind the pipeline:
@@ -11,13 +11,17 @@ import { demoMode, demoResearch, demoScout } from '@/lib/demo'
 const MODEL = 'claude-opus-5-5'
 const client = new Anthropic()
 
-const LAB_CONTEXT = `Si-Labs is a venture lab that brings proven, livelihood-creating ventures from one place to a new city.
-The lab acts as a franchise and distribution hub: it finds ventures with a track record elsewhere, checks they can be
-replicated, and helps them enter the target city in exchange for a fee or revenue share. The lab cares most about
-LROI (Livelihood Return on Investment: good jobs created per dollar invested), replicability, franchise-readiness
-and the founders' willingness to expand. Prefer ventures with real operating history over early-stage ideas.`
+const LAB_CONTEXT = `Si Labs builds commercial distribution partnerships with established businesses that generate profits and decent jobs.
+It helps those businesses enter new markets through its network of local Lab Leads, earning commercial returns for the business,
+Si Labs and the Lab Leads (for example market-entry fees, fees for qualified introductions or franchise/licence placements, or a revenue share).
+Si Labs does not provide financing; the focus is market entry, distribution services and commercially sustainable partnerships.
+Ventures are screened on five tests:
+${screeningTests.map((t) => `- ${t.label}: ${t.question}`).join('\n')}
+Alignment with Si Labs' eight thematic verticals is a strategic consideration, not a requirement. Prefer established businesses with
+real operating history over early-stage ideas.`
 
 const expansionModels = ['franchise', 'partner', 'cooperative', 'owned'] as const
+const decisions = ['proceed', 'hold', 'decline'] as const
 
 type SubmitTool<T> = { tool: Anthropic.Beta.BetaTool; parse: (input: unknown) => T }
 
@@ -80,6 +84,11 @@ const expansionModel = (value: unknown, field: string): Venture['expansionModel'
   const model = text(value, field)
   if (!expansionModels.includes(model as Venture['expansionModel'])) throw new Error(`${field} must be one of ${expansionModels.join(', ')}`)
   return model as Venture['expansionModel']
+}
+const decision = (value: unknown, field: string): Decision => {
+  const choice = text(value, field)
+  if (!(decisions as readonly string[]).includes(choice)) throw new Error(`${field} must be one of ${decisions.join(', ')}`)
+  return choice as Decision
 }
 const url = (value: unknown, field: string) => {
   const link = text(value, field)
@@ -168,7 +177,9 @@ export function runScout(cityName: string, knownVentures: string[]) {
 
 // --- Research ----------------------------------------------------------------
 
-export type ResearchResult = Pick<Venture, 'oneLiner' | 'hqCity' | 'hqCountry' | 'businessModel' | 'yearsRunning' | 'scale' | 'jobsCreated' | 'whoTheyEmploy' | 'expansionModel' | 'expansionHistory' | 'cityFit' | 'cityFitReason' | 'scores' | 'sources'>
+export type ResearchResult = Pick<Venture, 'oneLiner' | 'hqCity' | 'hqCountry' | 'businessModel' | 'yearsRunning' | 'scale' | 'jobsCreated' | 'whoTheyEmploy' | 'expansionModel' | 'expansionHistory' | 'cityFit' | 'cityFitReason' | 'scores' | 'screening' | 'discovery' | 'sources'>
+
+
 
 const scoreSchema = (description: string) => strictObject({
   value: { type: 'integer', description: `0-10. ${description}` },
@@ -194,12 +205,15 @@ const researchTool: SubmitTool<ResearchResult> = {
       expansionHistory: { type: 'string', description: 'How and where it has expanded so far, 2-4 sentences' },
       cityFit: { type: 'integer', description: '0-100: fit for the target city' },
       cityFitReason: { type: 'string', description: 'Why it fits the target city, 2-3 sentences' },
-      scores: strictObject({
-        lroi: scoreSchema('Livelihood Return on Investment: good jobs created per dollar invested'),
-        replicability: scoreSchema('How easily the model can be copied in a new city'),
-        franchiseReadiness: scoreSchema('Documented playbooks, training, brand and unit economics ready for franchising'),
-        willingnessToExpand: scoreSchema('Evidence the founders want to expand to new cities'),
+      scores: strictObject(Object.fromEntries(screeningTests.map((t) => [t.key, scoreSchema(`${t.label}: ${t.question}`)]))),
+      screening: strictObject({
+        recommendation: { type: 'string', enum: [...decisions], description: 'Recommended screening decision for the human reviewer' },
+        rationale: { type: 'string', description: 'One or two sentences explaining the recommendation' },
       }),
+      discovery: strictObject(Object.fromEntries(discoveryQuestions.map((d) => [d.key, strictObject({
+        answer: { type: 'string', description: `${d.area}: ${d.question} Draft from public sources; if they do not answer it, say what to ask in the partner meeting.` },
+        source: { type: 'string', enum: ['public', 'ask'], description: "'public' if answered from sources, 'ask' if it needs the partner meeting" },
+      })]))),
       sources: {
         type: 'array',
         description: 'The pages you relied on, in the order you cite them',
@@ -210,6 +224,8 @@ const researchTool: SubmitTool<ResearchResult> = {
   parse: (input) => {
     const root = record(input, 'input')
     const scores = record(root.scores, 'scores')
+    const screening = record(root.screening, 'screening')
+    const discovery = record(root.discovery, 'discovery')
     const sources = list(root.sources, 'sources').map((item, i) => {
       const source = record(item, `sources[${i}]`)
       return { title: text(source.title, `sources[${i}].title`), url: url(source.url, `sources[${i}].url`) }
@@ -236,7 +252,13 @@ const researchTool: SubmitTool<ResearchResult> = {
       expansionHistory: text(root.expansionHistory, 'expansionHistory'),
       cityFit: integer(root.cityFit, 'cityFit', 0, 100),
       cityFitReason: text(root.cityFitReason, 'cityFitReason'),
-      scores: { lroi: score('lroi'), replicability: score('replicability'), franchiseReadiness: score('franchiseReadiness'), willingnessToExpand: score('willingnessToExpand') },
+      scores: Object.fromEntries(screeningTests.map(({ key }) => [key, score(key)])) as Venture['scores'],
+      screening: { recommendation: decision(screening.recommendation, 'screening.recommendation'), rationale: text(screening.rationale, 'screening.rationale') },
+      discovery: discoveryQuestions.map(({ key }) => {
+        const d = record(discovery[key], `discovery.${key}`)
+        const source = text(d.source, `discovery.${key}.source`)
+        return { key, answer: text(d.answer, `discovery.${key}.answer`), source: source === 'public' ? 'public' as const : 'ask' as const }
+      }),
       sources,
     }
   },
@@ -246,7 +268,7 @@ export function runResearch(venture: Venture, city: City | undefined) {
   if (demoMode) return demoResearch(venture, city)
   const known = { name: venture.name, sector: venture.sector, hq: `${venture.hqCity}, ${venture.hqCountry}`, oneLiner: venture.oneLiner, links: venture.sources.map((s) => s.url) }
   return runAgent({
-    system: `You are the research agent for Si-Labs.\n\n${LAB_CONTEXT}\n\nYour job: a human has shortlisted a venture. Do the background research the lab needs to decide whether to pitch it: business model, scale, jobs and who they go to, expansion history, and the four scores. Use web search and web fetch, prefer primary sources (the venture's own site, annual reports, reputable press), and cite every claim. If something cannot be found, say so plainly instead of guessing.`,
+    system: `You are the research agent for Si-Labs.\n\n${LAB_CONTEXT}\n\nYour job: a human has shortlisted a venture. Do the screening and discovery groundwork Si Labs needs before a first partner meeting: business model, scale, jobs and who they go to, expansion history, the five screening tests with a recommended Proceed / Hold / Decline decision, and draft answers to the nine discovery questions (mark any that public sources cannot answer as 'ask'). Use web search and web fetch, prefer primary sources (the venture's own site, annual reports, reputable press), and cite every claim. If something cannot be found, say so plainly instead of guessing.`,
     prompt: `Venture to research:\n${JSON.stringify(known, null, 2)}\n\nTarget city: ${city ? `${city.name}${city.country ? `, ${city.country}` : ''}` : 'unknown'}${city?.demandSignals.length ? `\nCity demand signals: ${city.demandSignals.join('; ')}` : ''}\n\nWhen you are done, call submit_research.`,
     submit: researchTool,
   })

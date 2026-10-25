@@ -46,11 +46,19 @@ Stages 3–6 of the framework (distribution feasibility and economics, commercia
 
 Agents run in the background after the click (`lib/actions.ts`, via Next.js `after()`), and the pages refresh themselves while one is running. Ventures saved before the screening framework are mapped to the new fields when read (`normalizeVenture` in `lib/store.ts`). Re-run research on them to screen them properly.
 
+## Login and editing
+
+The whole app sits behind a single admin login (`/login`). `proxy.ts` sends anyone without a valid session to the login page, and every server action checks the session too (`requireSession` in `lib/auth.ts`). The session is a signed cookie that lasts 7 days. If the login variables below are missing, nobody can log in.
+
+Every part of a venture page can be edited from its **Edit** button (`/ventures/[id]/edit`): profile, city fit, the five screening scores and reasons, the recommendation, the discovery answers (tick "Answered" to take a question off the meeting list), sources and free-form notes. Re-running research replaces the researched fields but keeps the notes.
+
 ## Environment variables
 
 | Variable | Needed for |
 | --- | --- |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The login. Never commit these; set them in Vercel. |
+| `AUTH_SECRET` | A long random string that signs the session cookie (e.g. `openssl rand -base64 32`). Changing it logs everyone out. |
 | `ANTHROPIC_API_KEY` | The scout and research agents (Claude API). Without it the app runs in **demo mode**: both agents return made-up results (names start with "Demo:") after a few seconds, so the flow can be tried end to end. |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Saving catalogue and shortlist data. Create the tables with `supabase/schema.sql`. Without these the app keeps data in memory, which resets on every deploy or cold start. |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Saving catalogue and shortlist data. Easiest setup: Vercel → project → Storage → Create Database → Supabase, which adds both variables. Then create the tables with `supabase/schema.sql`. Empty tables are filled from `data/ventures.ts` on first load. Without these the app keeps data in memory, which resets on every deploy or cold start. |
 
 Agents run inside the server function, so they are capped by its time limit (`maxDuration = 300` seconds in `app/layout.tsx`).

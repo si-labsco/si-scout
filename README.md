@@ -36,7 +36,7 @@ To learn more, take a look at the following resources:
 
 The app follows stages 1–2 of the Si Labs **Distribution Partnership framework**: helping established, job-creating businesses enter new markets through local Lab Leads, for commercial returns to the business, Si Labs and the Lab Lead. Si Labs does not provide financing on this pathway.
 
-1. **Scout (AI agent)**: "Run new scout" takes a city. The scout agent (`runScout` in `lib/agents.ts`) uses Claude with web search to profile the city and find proven ventures elsewhere that could enter it.
+1. **Scout (AI agent, its own section)**: the Scout page (`/scout`) takes a city and keeps a history of every run (`City.runs`), each with its own page listing what it found (`/scout/[runId]`). The scout agent (`runScout` in `lib/agents.ts`) uses Claude with web search to profile the city and find proven ventures elsewhere that could enter it.
 2. **Catalogue**: the scout's candidates, filtered by city with the dropdown.
 3. **Shortlist (human)**: clicking "Shortlist" moves a candidate to the shortlist and starts the research agent.
 4. **Screening (AI agent, then human)**: `runResearch` fills in the profile and scores the five screening tests (commercial viability, decent jobs, replicability, distribution fit, commercial potential), each with a cited reason. It then recommends Proceed, Hold or Decline. The venture lands in **Approvals**, where a person makes the call.
@@ -44,7 +44,7 @@ The app follows stages 1–2 of the Si Labs **Distribution Partnership framework
 
 Stages 3–6 of the framework (distribution feasibility and economics, commercial agreement, pilot, scale or exit) are not built yet. The test and question wording lives in `screeningTests` and `discoveryQuestions` in `data/ventures.ts`.
 
-Agents run in the background after the click (`lib/actions.ts`, via Next.js `after()`), and the pages refresh themselves while one is running. Ventures saved before the screening framework are mapped to the new fields when read (`normalizeVenture` in `lib/store.ts`). Re-run research on them to screen them properly.
+Without `ANTHROPIC_API_KEY` but with Supabase connected, both agents are switched off (`agentsBlocked` in `lib/demo.ts`) so demo results can't overwrite real data. Agents run in the background after the click (`lib/actions.ts`, via Next.js `after()`), and the pages refresh themselves while one is running. Ventures saved before the screening framework are mapped to the new fields when read (`normalizeVenture` in `lib/store.ts`). Re-run research on them to screen them properly.
 
 ## Login and editing
 

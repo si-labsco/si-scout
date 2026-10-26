@@ -2,9 +2,9 @@
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { discoveryQuestions, screeningTests, type Decision, type Venture } from '@/data/ventures'
+import { discoveryQuestions, screeningTests, type City, type Decision, type ScoutRun, type Venture } from '@/data/ventures'
 import { runResearch, runScout } from '@/lib/agents'
-import { demoMode } from '@/lib/demo'
+import { agentsBlocked, demoMode } from '@/lib/demo'
 import { getCity, getVenture, store, updateVenture } from '@/lib/store'
 import { requireSession } from '@/lib/auth'
 import { blankCity, decisionStatus, isRunning, slugify } from '@/lib/ventures'
@@ -12,21 +12,32 @@ import { blankCity, decisionStatus, isRunning, slugify } from '@/lib/ventures'
 const now = () => new Date().toISOString()
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-// Starts the scout agent for a city in the background and sends the user to that city's catalogue.
+// Starts the scout agent for a city in the background, records the run in the city's history
+// and sends the user to the run page.
 export async function startScout(formData: FormData) {
   await requireSession()
   const name = String(formData.get('city') ?? '').trim()
-  if (!name) return
+  if (!name || agentsBlocked) return
   const id = slugify(name)
   const existing = await getCity(id)
-  if (!isRunning(existing?.scout)) {
-    await store.saveCity({ ...(existing ?? blankCity(id, name)), scout: { status: 'running', startedAt: now() } })
-    after(() => scoutCity(id, name))
-  }
-  redirect(`/catalogue?city=${id}`)
+  if (isRunning(existing?.scout)) redirect(`/scout/${existing?.runs?.[0]?.id ?? ''}`)
+  const startedAt = now()
+  const run: ScoutRun = { id: `run-${Date.now()}`, cityId: id, cityName: existing?.name || name, status: 'running', startedAt, ventureIds: [], demo: demoMode }
+  const city = existing ?? blankCity(id, name)
+  await store.saveCity({ ...city, scout: { status: 'running', startedAt }, runs: [run, ...(city.runs ?? [])] })
+  after(() => scoutCity(id, name, run.id))
+  revalidatePath('/', 'layout')
+  redirect(`/scout/${run.id}`)
 }
 
-async function scoutCity(cityId: string, name: string) {
+// Updates one run in a city's history, keeping `city.scout` in step with the latest run.
+const withRun = (city: City, runId: string, patch: Partial<ScoutRun>): City => {
+  const runs = (city.runs ?? []).map((run) => (run.id === runId ? { ...run, ...patch } : run))
+  const latest = runs[0]
+  return { ...city, runs, scout: latest ? { status: latest.status, startedAt: latest.startedAt, finishedAt: latest.finishedAt, error: latest.error } : city.scout }
+}
+
+async function scoutCity(cityId: string, name: string, runId: string) {
   try {
     const ventures = await store.listVentures()
     const result = await runScout(name, ventures.filter((v) => v.cityId === cityId).map((v) => v.name))
@@ -42,7 +53,7 @@ async function scoutCity(cityId: string, name: string) {
       for (let n = 2; taken.has(id); n++) id = `${slugify(c.name)}-${cityId}-${n}`
       taken.add(id)
       candidates.push({
-        id, cityId, stage: 'catalogue', research: { status: 'not_started' },
+        id, cityId, scoutRunId: runId, stage: 'catalogue', research: { status: 'not_started' },
         name: c.name, sector: c.sector, hqCity: c.hqCity, hqCountry: c.hqCountry, oneLiner: c.oneLiner,
         businessModel: 'To be researched', yearsRunning: 0, scale: 'To be researched', jobsCreated: 0, whoTheyEmploy: 'To be researched',
         expansionModel: c.expansionModel, expansionHistory: 'To be researched.', status: 'new', cityFit: c.cityFit, cityFitReason: c.cityFitReason,
@@ -54,10 +65,11 @@ async function scoutCity(cityId: string, name: string) {
       })
     }
     await store.saveVentures(candidates)
-    await store.saveCity({ ...city, ...result.city, name: result.city.name || city.name, scout: { status: 'done', startedAt: city.scout?.startedAt, finishedAt: now() } })
+    const cityName = result.city.name || city.name
+    await store.saveCity(withRun({ ...city, ...result.city, name: cityName }, runId, { status: 'done', finishedAt: now(), cityName, ventureIds: candidates.map((v) => v.id) }))
   } catch (error) {
     const city = (await getCity(cityId)) ?? blankCity(cityId, name)
-    await store.saveCity({ ...city, scout: { status: 'failed', startedAt: city.scout?.startedAt, finishedAt: now(), error: message(error) } })
+    await store.saveCity(withRun(city, runId, { status: 'failed', finishedAt: now(), error: message(error) }))
   }
 }
 
@@ -72,7 +84,7 @@ export async function shortlistVenture(id: string) {
 export async function startResearch(id: string) {
   await requireSession()
   const venture = await getVenture(id)
-  if (!venture || isRunning(venture.research)) return
+  if (!venture || isRunning(venture.research) || agentsBlocked) return
   await updateVenture(id, { research: { status: 'running', startedAt: now() } })
   after(() => researchVenture(id))
   revalidatePath('/', 'layout')

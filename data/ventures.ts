@@ -7,7 +7,19 @@ export type City = {
   costFit: number
   talentFit: number
   blockers: string[]
+  // Latest scout run (kept for the progress banners) and the full history, newest first.
   scout?: AgentRun
+  runs?: ScoutRun[]
+}
+
+// One run of the scout agent for a city, and the candidates it added to the catalogue.
+export type ScoutRun = AgentRun & {
+  id: string
+  cityId: string
+  cityName: string
+  startedAt: string
+  ventureIds: string[]
+  demo: boolean
 }
 
 export type AgentRun = {
@@ -78,6 +90,8 @@ export type Venture = {
   screening: { recommendation: Decision; rationale: string }
   discovery: DiscoveryAnswer[]
   sources: { title: string; url: string }[]
+  // The scout run that found this venture; seed ventures came from #ventures-for-si-labs.
+  scoutRunId?: string
   // Free-form meeting and team notes. Edited by hand; research never overwrites them.
   notes?: string
   lastUpdated: string

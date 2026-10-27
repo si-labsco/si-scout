@@ -1,0 +1,3 @@
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+// Small status pill for a scout run.
+export function RunStatus({ status }: { status: string }) { return status === 'running' ? <span className="flex items-center gap-1 rounded-full bg-accent/25 px-2 py-0.5 text-[10px] font-medium text-accent-foreground"><Loader2 className="size-3 animate-spin" />Running</span> : status === 'failed' ? <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive"><AlertCircle className="size-3" />Failed</span> : <span className="flex items-center gap-1 rounded-full bg-glass-strong px-2 py-0.5 text-[10px] font-medium text-muted-foreground"><CheckCircle2 className="size-3" />Done</span> }

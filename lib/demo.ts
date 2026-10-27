@@ -5,6 +5,9 @@ import type { ResearchResult, ScoutResult } from '@/lib/agents'
 // after a short delay, so the whole flow can be tried end to end. Everything they produce is marked
 // as sample data and says so in the text.
 export const demoMode = !process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN
+// With a real database connected, demo results would overwrite real data, so the agents stay off
+// until an API key is added. Demo mode still works with the in-memory store (local development).
+export const agentsBlocked = demoMode && Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const seeded = (text: string) => { let h = 0; for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (min: number, max: number) => { h = (h * 1103515245 + 12345) >>> 0; return min + (h % (max - min + 1)) } }

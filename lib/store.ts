@@ -1,30 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { cities as seedCities, discoveryQuestions, screeningTests, ventures as seedVentures, type City, type Score, type Venture } from '@/data/ventures'
+import { cities as seedCities, normalizeVenture, ventures as seedVentures, type City, type Venture } from '@/data/ventures'
+import { exampleDeal, exampleDealId } from '@/data/example-deal'
 
 // Server-side storage for cities and ventures. Uses Supabase when SUPABASE_URL and
 // SUPABASE_SERVICE_ROLE_KEY are set (see supabase/schema.sql); otherwise falls back to
 // an in-memory copy of the seed data that resets whenever the server restarts.
-
-// Brings ventures saved before the screening framework up to date: old score keys and
-// statuses are mapped, and missing screening/discovery fields get defaults.
-const rerun = 'Scored under the old criteria; re-run research to screen against this test.'
-export function normalizeVenture(venture: Venture): Venture {
-  const old = (venture.scores ?? {}) as Partial<Record<string, Score>>
-  const fallback: Partial<Record<string, Score | undefined>> = {
-    decentJobs: old.lroi && { ...old.lroi, reason: `${old.lroi.reason} (from the old LROI score)` },
-    distributionFit: old.franchiseReadiness && { ...old.franchiseReadiness, reason: `${old.franchiseReadiness.reason} (from the old franchise-readiness score)` },
-    commercialPotential: old.willingnessToExpand && { ...old.willingnessToExpand, reason: `${old.willingnessToExpand.reason} (from the old willingness-to-expand score)` },
-  }
-  const scores = Object.fromEntries(screeningTests.map(({ key }) => [key, old[key] ?? fallback[key] ?? { value: 0, reason: rerun }])) as Venture['scores']
-  const status = (venture.status as string) === 'ready_to_pitch' ? 'proceed' : venture.status
-  return {
-    ...venture,
-    status,
-    scores,
-    screening: venture.screening ?? { recommendation: 'hold', rationale: 'Not screened yet. Run research to get a recommendation.' },
-    discovery: venture.discovery ?? discoveryQuestions.map(({ key }) => ({ key, answer: 'Ask in the partner meeting.', source: 'ask' as const })),
-  }
-}
 
 type Store = {
   listCities(): Promise<City[]>
@@ -57,9 +37,19 @@ function supabaseStore(client: SupabaseClient): Store {
     (seeded ??= (async () => {
       const { count, error } = await client.from('cities').select('id', { count: 'exact', head: true })
       if (error) throw error
-      if (count) return
-      await write('cities', seedCities)
-      await write('ventures', seedVentures)
+      if (!count) await write('cities', seedCities)
+      // Adds seed ventures that are missing (e.g. the example deal added after the first seeding);
+      // existing rows are never overwritten.
+      const { data, error: listError } = await client.from('ventures').select('id, data')
+      if (listError) throw listError
+      const have = new Set(data.map((row) => row.id as string))
+      await write('ventures', seedVentures.filter((venture) => !have.has(venture.id)))
+      // One-off: turn the stored Crepes & Waffles record into the example deal, keeping its other fields.
+      const example = data.find((row) => row.id === exampleDealId)?.data as Venture | undefined
+      if (example && !example.pathway) {
+        const venture = normalizeVenture(example)
+        await write('ventures', [{ ...venture, ...exampleDeal(venture) }])
+      }
     })())
   const read = async <T>(table: string): Promise<T[]> => {
     await ensureSeeded()
@@ -101,3 +91,4 @@ export async function updateVenture(id: string, patch: Partial<Venture>) {
   await store.saveVentures([next])
   return next
 }
+

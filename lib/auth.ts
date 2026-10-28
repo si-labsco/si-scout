@@ -40,6 +40,9 @@ export function verifySession(value: string | undefined) {
 }
 
 // For server actions: they are POSTs the proxy also sees, but checking here keeps them safe if routes move.
+// Returns the signed-in email, recorded on pipeline moves.
 export async function requireSession() {
-  if (!verifySession((await cookies()).get(SESSION_COOKIE)?.value)) redirect('/login')
+  const value = (await cookies()).get(SESSION_COOKIE)?.value
+  if (!verifySession(value)) redirect('/login')
+  return Buffer.from(value!.split('.')[0], 'base64url').toString()
 }

@@ -34,7 +34,7 @@ To learn more, take a look at the following resources:
 
 ## How the pipeline works
 
-The app follows stages 1–2 of the Si Labs **Distribution Partnership framework**: helping established, job-creating businesses enter new markets through local Lab Leads, for commercial returns to the business, Si Labs and the Lab Lead. Si Labs does not provide financing on this pathway.
+The steps below are stages 1–2 of the Si Labs **Distribution Partnership framework**: helping established, job-creating businesses enter new markets through local Lab Leads, for commercial returns to the business, Si Labs and the Lab Lead. Si Labs does not provide financing on this pathway.
 
 1. **Scout (AI agent, its own section)**: the Scout page (`/scout`) takes a city and keeps a history of every run (`City.runs`), each with its own page listing what it found (`/scout/[runId]`). The scout agent (`runScout` in `lib/agents.ts`) uses Claude with web search to profile the city and find proven ventures elsewhere that could enter it.
 2. **Catalogue**: the scout's candidates, filtered by city with the dropdown.
@@ -42,15 +42,29 @@ The app follows stages 1–2 of the Si Labs **Distribution Partnership framework
 4. **Screening (AI agent, then human)**: `runResearch` fills in the profile and scores the five screening tests (commercial viability, decent jobs, replicability, distribution fit, commercial potential), each with a cited reason. It then recommends Proceed, Hold or Decline. The venture lands in **Approvals**, where a person makes the call.
 5. **Discovery prep**: the research agent also drafts answers to the nine discovery questions from public sources. Anything it can't answer goes on a "To ask in the meeting" list on the venture's page.
 
-Stages 3–6 of the framework (distribution feasibility and economics, commercial agreement, pilot, scale or exit) are not built yet. The test and question wording lives in `screeningTests` and `discoveryQuestions` in `data/ventures.ts`.
+### Pathways and stages
 
-Without `ANTHROPIC_API_KEY` but with Supabase connected, both agents are switched off (`agentsBlocked` in `lib/demo.ts`) so demo results can't overwrite real data. Agents run in the background after the click (`lib/actions.ts`, via Next.js `after()`), and the pages refresh themselves while one is running. Ventures saved before the screening framework are mapped to the new fields when read (`normalizeVenture` in `lib/store.ts`). Re-run research on them to screen them properly.
+Each venture follows a **pathway**, which sets its stages, screening tests and discovery questions. All of the wording lives in `data/pathways.ts`, taken from the Notion process docs.
+
+- **Investment** (stages 0–8): Sourcing, Screening, Founder discovery, Relationship development (optional), Due diligence & structuring, Investment decision, Closing & disbursement, Monitoring & support, Exit & evaluation. The tests are legal & legitimate, commercial traction, meaningful jobs, replicability and vertical fit. Vertical fit is a hard gate and comes from the venture's Si Labs verticals.
+- **Distribution partnership** (stages 1–6): Screening, Partner discovery, Distribution feasibility, Commercial agreement, Pilot, Scale or exit. It uses the five tests and nine questions above.
+- **Undecided**: Sourcing and Screening only, scored on both sets of tests. New scout candidates start here.
+
+The venture page has a pathway selector and a stage stepper. Clicking a step opens that stage's panel, where you record its outputs (for example milestones and a review date, or the investment decision). **Move to …** stays locked until the current stage's required outputs are filled in. At screening, the decision must be Proceed, and on the Investment path a vertical must be set. Moving back is always allowed. Every move and pathway change is logged with who made it and when (`stageHistory`).
+
+Screening results are Yes / No / Needs analysis. The research agent pre-fills them as unconfirmed suggestions, and clicking a result confirms it. Research currently scores only the Distribution tests (pathway-aware research is not built yet).
+
+Each venture also has **contacts** (chips under the name: add, edit, remove, mark one as primary) and **sourcing** fields (source, originator, verticals, country / region).
+
+**Example deal:** Crepes & Waffles is walked through every Investment stage (`data/example-deal.ts`). Its profile and screening come from public research; stages 2–8 hold placeholder content. On a database seeded earlier, the stored record is upgraded once, the first time the app reads it.
+
+Without `ANTHROPIC_API_KEY` but with Supabase connected, both agents are switched off (`agentsBlocked` in `lib/demo.ts`) so demo results can't overwrite real data. Agents run in the background after the click (`lib/actions.ts`, via Next.js `after()`), and the pages refresh themselves while one is running. Ventures saved under earlier versions are mapped to the new fields when read (`normalizeVenture` in `data/ventures.ts`). They become Distribution ventures, and their old 0–10 scores become unconfirmed results.
 
 ## Login and editing
 
 The whole app sits behind a single admin login (`/login`). `proxy.ts` sends anyone without a valid session to the login page, and every server action checks the session too (`requireSession` in `lib/auth.ts`). The session is a signed cookie that lasts 7 days. If the login variables below are missing, nobody can log in.
 
-Every part of a venture page can be edited from its **Edit** button (`/ventures/[id]/edit`): profile, city fit, the five screening scores and reasons, the recommendation, the discovery answers (tick "Answered" to take a question off the meeting list), sources and free-form notes. Re-running research replaces the researched fields but keeps the notes.
+Every part of a venture page can be edited from its **Edit** button (`/ventures/[id]/edit`): profile, sourcing and verticals, city fit, the screening results and notes for the venture's pathway, the recommendation, the discovery answers (tick "Answered" to take a question off the meeting list), sources and free-form notes. Re-running research replaces the researched fields but keeps the notes.
 
 ## Environment variables
 

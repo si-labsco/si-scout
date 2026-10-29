@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { discoveryQuestions, screeningTests, type City, type Decision, type Venture } from '@/data/ventures'
+import type { City, Decision, Venture } from '@/data/ventures'
+import { distributionQuestions as discoveryQuestions, distributionTests as screeningTests } from '@/data/pathways'
 import { demoMode, demoResearch, demoScout } from '@/lib/demo'
 
 // The two AI agents behind the pipeline:
@@ -177,7 +178,10 @@ export function runScout(cityName: string, knownVentures: string[]) {
 
 // --- Research ----------------------------------------------------------------
 
-export type ResearchResult = Pick<Venture, 'oneLiner' | 'hqCity' | 'hqCountry' | 'businessModel' | 'yearsRunning' | 'scale' | 'jobsCreated' | 'whoTheyEmploy' | 'expansionModel' | 'expansionHistory' | 'cityFit' | 'cityFitReason' | 'scores' | 'screening' | 'discovery' | 'sources'>
+// The agent scores the Distribution tests 0–10 (pathway-aware research is not built yet); the app turns
+// each score into an unconfirmed Yes / No / Needs analysis result.
+export type AgentScore = { value: number; reason: string; sourceRefs?: number[] }
+export type ResearchResult = Pick<Venture, 'oneLiner' | 'hqCity' | 'hqCountry' | 'businessModel' | 'yearsRunning' | 'scale' | 'jobsCreated' | 'whoTheyEmploy' | 'expansionModel' | 'expansionHistory' | 'cityFit' | 'cityFitReason' | 'screening' | 'discovery' | 'sources'> & { scores: Record<string, AgentScore> }
 
 
 
@@ -231,7 +235,7 @@ const researchTool: SubmitTool<ResearchResult> = {
       return { title: text(source.title, `sources[${i}].title`), url: url(source.url, `sources[${i}].url`) }
     }).filter((source) => source.url)
     if (!sources.length) throw new Error('sources must contain at least one URL')
-    const score = (key: keyof Venture['scores']) => {
+    const score = (key: string): AgentScore => {
       const s = record(scores[key], `scores.${key}`)
       return {
         value: integer(s.value, `scores.${key}.value`, 0, 10),
@@ -252,7 +256,7 @@ const researchTool: SubmitTool<ResearchResult> = {
       expansionHistory: text(root.expansionHistory, 'expansionHistory'),
       cityFit: integer(root.cityFit, 'cityFit', 0, 100),
       cityFitReason: text(root.cityFitReason, 'cityFitReason'),
-      scores: Object.fromEntries(screeningTests.map(({ key }) => [key, score(key)])) as Venture['scores'],
+      scores: Object.fromEntries(screeningTests.map(({ key }) => [key, score(key)])),
       screening: { recommendation: decision(screening.recommendation, 'screening.recommendation'), rationale: text(screening.rationale, 'screening.rationale') },
       discovery: discoveryQuestions.map(({ key }) => {
         const d = record(discovery[key], `discovery.${key}`)

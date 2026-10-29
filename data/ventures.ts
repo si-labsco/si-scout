@@ -1,3 +1,6 @@
+import { distributionQuestions, distributionTests, type Pathway, type Vertical } from '@/data/pathways'
+import { exampleDeal, exampleDealId } from '@/data/example-deal'
+
 export type City = {
   id: string
   name: string
@@ -29,45 +32,46 @@ export type AgentRun = {
   error?: string
 }
 
+// A screening test result. The research agent pre-fills it (aiValue keeps its 0–10 score) and a
+// person confirms it; any human edit counts as confirmed.
+export type ScreeningResult = 'yes' | 'no' | 'needs_analysis'
 export type Score = {
-  value: number
-  reason: string
+  result: ScreeningResult
+  note: string
   sourceRefs?: number[]
+  confirmed: boolean
+  aiValue?: number
 }
-
-// Stage 1 of the Si Labs Distribution Partnership framework: five screening tests.
-export const screeningTests = [
-  { key: 'commercialViability', label: 'Commercial viability', question: 'Is this an established business with paying customers, a credible revenue model and evidence of profitability or a viable path to profitability?' },
-  { key: 'decentJobs', label: 'Decent jobs', question: 'Does the business create meaningful employment or livelihoods, with acceptable working conditions and potential for improved incomes?' },
-  { key: 'replicability', label: 'Replicability', question: 'Is there a recognisable product, service or operating model that can be delivered in other markets?' },
-  { key: 'distributionFit', label: 'Distribution fit', question: 'Is there a clear market-entry need that Si Labs and its Lab Leads could realistically address?' },
-  { key: 'commercialPotential', label: 'Commercial potential', question: 'Is there sufficient economic value in expansion to compensate the business, Si Labs and Lab Leads?' },
-] as const
-export type ScreeningKey = (typeof screeningTests)[number]['key']
-
-// Stage 2: the core discovery questions for the first partner meetings.
-export const discoveryQuestions = [
-  { key: 'businessModel', area: 'Business model', question: 'What does the business sell, who are its customers and how does it generate revenue?' },
-  { key: 'traction', area: 'Commercial traction', question: 'What evidence demonstrates that the business model works commercially?' },
-  { key: 'expansion', area: 'Expansion', question: 'Which markets are you targeting, and what has prevented or slowed expansion so far?' },
-  { key: 'distributionNeed', area: 'Distribution need', question: 'What specifically would you need a local distribution partner to deliver?' },
-  { key: 'replication', area: 'Replication', question: 'What would be required to establish the business in a new market, including capital, people, systems and training?' },
-  { key: 'responsibilities', area: 'Partner responsibilities', question: 'What would your company provide centrally, and what would you expect Si Labs or a local operator to deliver?' },
-  { key: 'commercialStructure', area: 'Commercial structure', question: 'How does your company earn revenue from expansion, and what commercial arrangements would you consider with a distribution partner?' },
-  { key: 'jobs', area: 'Jobs', question: 'How many jobs does a typical operating unit support, and what employment conditions can be demonstrated?' },
-  { key: 'success', area: 'Success criteria', question: 'What would a successful initial partnership look like over the first 6–12 months?' },
-] as const
-export type DiscoveryKey = (typeof discoveryQuestions)[number]['key']
+export const resultFromValue = (value: number): ScreeningResult => (value >= 7 ? 'yes' : value >= 4 ? 'needs_analysis' : 'no')
 
 export type Decision = 'proceed' | 'hold' | 'decline'
 
-// Draft answer to a discovery question: 'public' if found in research, 'ask' if it needs the partner meeting.
-export type DiscoveryAnswer = { key: DiscoveryKey; answer: string; source: 'public' | 'ask' }
+// Draft answer to a discovery question: 'public' if found in research, 'ask' if it needs the meeting.
+export type DiscoveryAnswer = { key: string; answer: string; source: 'public' | 'ask' }
+
+export const contactRoles = ['CEO', 'COO', 'Impact director', 'Other'] as const
+export type Contact = { id: string; name: string; role: (typeof contactRoles)[number]; email?: string; phone?: string; linkedin?: string; isPrimary: boolean }
+
+// One move along the pipeline (a stage change or a pathway change).
+export type StageEvent = { from?: string; to: string; fromPathway?: Pathway; pathway: Pathway; at: string; by: string }
 
 export type Venture = {
   id: string
   cityId: string
-  stage: 'catalogue' | 'shortlisted'
+  // Catalogue or shortlist (shortlisting starts research). The pipeline position is pathway + stage.
+  list: 'catalogue' | 'shortlisted'
+  pathway: Pathway
+  // A stage key from pathways[pathway].stages.
+  stage: string
+  stageHistory: StageEvent[]
+  // Output fields recorded at each stage, keyed by stage key then field key.
+  stageOutputs: Record<string, Record<string, string>>
+  contacts: Contact[]
+  // Sourcing, matching the Notion Deal Origination and Tracking columns.
+  source: string
+  originator: string
+  verticals: Vertical[]
+  countryRegion: string
   research: AgentRun
   name: string
   sector: string
@@ -85,7 +89,8 @@ export type Venture = {
   status: 'new' | 'needs_review' | 'proceed' | 'hold' | 'declined'
   cityFit: number
   cityFitReason: string
-  scores: Record<ScreeningKey, Score>
+  // Screening results keyed by test key, across both pathways' tests.
+  scores: Record<string, Score>
   // The research agent's recommended screening decision; the human decision is `status`.
   screening: { recommendation: Decision; rationale: string }
   discovery: DiscoveryAnswer[]
@@ -96,6 +101,50 @@ export type Venture = {
   notes?: string
   lastUpdated: string
   isSample: boolean
+}
+
+// Brings records saved under earlier versions up to date: catalogue/shortlist moves from `stage` to
+// `list`, 0–10 scores become unconfirmed Yes / No / Needs analysis results, and ventures without a
+// pathway become Distribution, the framework they were screened on.
+export type LegacyScore = Partial<Score> & { value?: number; reason?: string }
+const rerun = 'Scored under the old criteria; re-run research to screen against this test.'
+export function normalizeVenture(raw: Venture): Venture {
+  const venture = raw as Omit<Venture, 'scores' | 'stage' | 'list'> & { scores?: Record<string, LegacyScore>; stage?: string; list?: Venture['list'] }
+  const legacyList = venture.stage === 'catalogue' || venture.stage === 'shortlisted' ? venture.stage : undefined
+  const status = (venture.status as string) === 'ready_to_pitch' ? 'proceed' : venture.status
+  const pathway = venture.pathway ?? 'distribution'
+  const stage = legacyList || !venture.stage ? (status === 'proceed' && pathway === 'distribution' ? 'discovery' : 'screening') : venture.stage
+  const old = venture.scores ?? {}
+  const fallback: Record<string, LegacyScore | undefined> = {
+    decentJobs: old.lroi && { ...old.lroi, reason: `${old.lroi.reason} (from the old LROI score)` },
+    distributionFit: old.franchiseReadiness && { ...old.franchiseReadiness, reason: `${old.franchiseReadiness.reason} (from the old franchise-readiness score)` },
+    commercialPotential: old.willingnessToExpand && { ...old.willingnessToExpand, reason: `${old.willingnessToExpand.reason} (from the old willingness-to-expand score)` },
+  }
+  const legacyKeys = ['lroi', 'franchiseReadiness', 'willingnessToExpand']
+  const keys = new Set([...distributionTests.map((t) => t.key), ...Object.keys(old).filter((k) => !legacyKeys.includes(k))])
+  const scores: Venture['scores'] = Object.fromEntries([...keys].map((key): [string, Score] => {
+    const s = old[key] ?? fallback[key]
+    if (!s) return [key, { result: 'needs_analysis', note: rerun, confirmed: false }]
+    if (s.result) return [key, { result: s.result, note: s.note ?? '', sourceRefs: s.sourceRefs, confirmed: s.confirmed ?? false, aiValue: s.aiValue }]
+    return [key, { result: resultFromValue(s.value ?? 0), note: s.reason ?? '', sourceRefs: s.sourceRefs, confirmed: false, aiValue: s.value }]
+  }))
+  return {
+    ...venture,
+    list: venture.list ?? legacyList ?? 'catalogue',
+    pathway,
+    stage,
+    stageHistory: venture.stageHistory ?? [],
+    stageOutputs: venture.stageOutputs ?? {},
+    contacts: venture.contacts ?? [],
+    source: venture.source ?? '',
+    originator: venture.originator ?? '',
+    verticals: venture.verticals ?? [],
+    countryRegion: venture.countryRegion ?? venture.hqCountry ?? '',
+    status,
+    scores,
+    screening: venture.screening ?? { recommendation: 'hold', rationale: 'Not screened yet. Run research to get a recommendation.' },
+    discovery: venture.discovery ?? distributionQuestions.map(({ key }) => ({ key, answer: 'Ask in the partner meeting.', source: 'ask' as const })),
+  }
 }
 
 export const selectedCityId = 'new-york'
@@ -113,7 +162,9 @@ export const cities: City[] = [
   },
 ]
 
-type SeedVenture = Omit<Venture, 'cityId' | 'stage' | 'research'>
+// Seed ventures: the original 0–10 score shape, and no pipeline fields (normalizeVenture fills them in).
+type Pipeline = 'pathway' | 'stage' | 'stageHistory' | 'stageOutputs' | 'contacts' | 'source' | 'originator' | 'verticals' | 'countryRegion'
+export type SeedVenture = Omit<Venture, 'cityId' | 'list' | 'research' | 'scores' | Pipeline> & Partial<Pick<Venture, Pipeline | 'list'>> & { scores: Record<string, LegacyScore> }
 
 // Ventures shared in #ventures-for-si-labs, researched from web search results (Oct 2026).
 // Figures come from third-party sources (the ventures' own sites could not be opened); each
@@ -737,9 +788,14 @@ const seed: SeedVenture[] = [
 ]
 
 // Seed data for the first run. Ventures already under review start on the shortlist; the rest sit in the catalogue.
-export const ventures: Venture[] = seed.map((venture) => ({
-  ...venture,
-  cityId: selectedCityId,
-  stage: venture.status === 'new' ? 'catalogue' : 'shortlisted',
-  research: { status: 'done', finishedAt: '2026-10-23T00:00:00.000Z' },
-}))
+// Crepes & Waffles doubles as the example deal on the Investment pathway (see data/example-deal.ts).
+export const ventures: Venture[] = seed.map((raw) => {
+  const venture = normalizeVenture({
+    source: '#ventures-for-si-labs',
+    ...raw,
+    cityId: selectedCityId,
+    list: raw.list ?? (raw.status === 'new' ? 'catalogue' : 'shortlisted'),
+    research: { status: 'done', finishedAt: '2026-10-23T00:00:00.000Z' },
+  } as unknown as Venture)
+  return venture.id === exampleDealId ? { ...venture, ...exampleDeal(venture) } : venture
+})
